@@ -9,5 +9,8 @@
     "**/.git": true,
     "**/.DS_Store": true,
     "**/tmp": false
+  },
+  "terminal.integrated.env.linux": {
+    "CLOUDSDK_CONFIG": "${workspaceFolder}/.gcloud"
   }
 }

@@ -8,8 +8,8 @@ echo "================================================================="
 echo "  🚀 Bootstrapping Universal Project Workspace"
 echo "================================================================="
 
-# 1. Ensure tmp directory exists with .gitkeep
-mkdir -p tmp
+# 1. Ensure tmp & .gcloud directories exist with isolation guarantees
+mkdir -p tmp .gcloud
 touch tmp/.gitkeep
 
 # 2. Initialize Git repository if not already initialized
@@ -37,8 +37,11 @@ fi
 
 echo "================================================================="
 echo "✅ Universal Workspace Initialized Successfully!"
+echo "Features enabled:"
+echo "  • Physical Session Isolation for gcloud (.gcloud directory)"
+echo "  • Scratch script isolation in tmp/"
+echo "  • Multi-Agent collaboration rules in .agents/AGENTS.md"
 echo "Next steps:"
 echo "  1. Review and customize .env as needed"
-echo "  2. Consult .agents/AGENTS.md for Multi-Agent coordination workflows"
-echo "  3. Place all scratch/temporary scripts in tmp/"
+echo "  2. (Optional) Run 'gcloud auth login' for isolated GCP authentication"
 echo "================================================================="
