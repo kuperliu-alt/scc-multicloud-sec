@@ -1,0 +1,93 @@
+# ==============================================================================
+# 1. AI Coding Assistants & Jetski Agent Environments
+# ==============================================================================
+.agents/skills/
+.gemini/
+.jetski/
+.cursor/
+.windsurf/
+.idx/
+scratch/
+*.prompt.md
+TODO.md
+*.todo.md
+
+# ==============================================================================
+# 2. IDE & Editor Configurations
+# ==============================================================================
+.idea/
+*.iml
+*.iws
+.settings/
+.project
+.classpath
+.factorypath
+bin/
+*.swp
+*.swo
+*~
+*.code-workspace
+
+# ==============================================================================
+# 3. Local Environment Variables & Security Secrets
+# ==============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
+.gcloud/
+
+# ==============================================================================
+# 4. Multi-Language Builds, Binaries & Test Caches
+# ==============================================================================
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / TypeScript / Frontend
+node_modules/
+dist/
+build/
+.next/
+.npm/
+*.tsbuildinfo
+
+# Golang
+*.exe
+__debug_bin*
+*.test
+
+# Java & Maven / Gradle
+target/
+*.class
+hs_err_pid*.log
+.mvn/timing.properties
+.gradle/
+
+# Rust / C / C++
+/target/
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+
+# ==============================================================================
+# 5. Logs & Temporary Scratch Scripts (Isolation Invariant)
+# ==============================================================================
+*.log
+logs/
+tmp/
+!tmp/.gitkeep
