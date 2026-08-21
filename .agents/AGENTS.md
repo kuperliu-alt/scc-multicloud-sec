@@ -70,8 +70,9 @@ This document defines the agent roles, system prompts, responsibility boundaries
 
 ---
 
-## 2. Dispatching & Scheduling Workflow (智能体调度规范)
+## 2. Dispatching & Scheduling Workflows (智能体调度与弹性路由规范)
 
+### 🔄 Mode A: Full Lifecycle Pipeline (全新特性与复杂系统研发)
 ```mermaid
 sequenceDiagram
     autonumber
@@ -81,26 +82,25 @@ sequenceDiagram
     participant QA as QA Subagent
     participant Ops as DevOps Subagent
     
-    Main->>Arch: Invoke with requirement/design task
-    Note over Arch: Analyze requirements, design schemas & RFCs
-    Arch-->>Main: Return design specifications (Document)
-    
-    Main->>Dev: Invoke with implementation task & Design Specs
-    Note over Dev: Implement source code, modules & configs
-    Dev-->>Main: Return completed source code / branch
-    
-    Main->>QA: Invoke with testing task & completed code
-    Note over QA: Compile build, execute tests, verify edge cases
-    QA-->>Main: Return test execution logs & quality report
-    
-    Main->>Ops: Invoke with commit/release task & verified report
-    Note over Ops: Format commits, tag releases, update CI/CD
-    Ops-->>Main: Return repository sync & release state
+    Main->>Arch: 1. Design RFC & Interface Contracts
+    Arch-->>Main: Design Specs (Markdown)
+    Main->>Dev: 2. Implement Code & Modules
+    Dev-->>Main: Source Code & Local Tests
+    Main->>QA: 3. Test Suites, Linters & Verification
+    QA-->>Main: Test Execution Logs & Quality Report
+    Main->>Ops: 4. Conventional Commit & Release
+    Ops-->>Main: Clean Git State & Release Summary
 ```
+
+### ⚡ Mode B: Fast-Track Bugfix & Refactoring (快速缺陷修复与局部优化)
+`Main` $\rightarrow$ `Dev` (编写修复) $\rightarrow$ `QA` (复现验证并添加回归测试) $\rightarrow$ `Ops` (规范提交)。
+
+### 📝 Mode C: Documentation & Maintenance (纯文档与配置更新)
+`Main` $\rightarrow$ `Ops` / `Architect` (直接更新并确保 1:1 双语同步与提交)。
 
 ---
 
-## 3. Mandatory Governance Invariants (硬性约束规范)
+## 3. Mandatory Governance Invariants (硬性工程治理约束)
 
 ### 🚨 Invariant 1: 1-to-1 Bilingual Documentation (默认英文与 _CHN 中文 1:1 双向同步约束)
 1. **Default English Naming**: All primary default documentation files without suffix (e.g. `README.md`, `ARCHITECTURE.md`) **MUST STRICTLY be written in English**.
@@ -118,3 +118,7 @@ sequenceDiagram
 ### 🚨 Invariant 4: Conventional Version Control (规范化提交与分支策略约束)
 1. **Conventional Commits**: Every git commit message must follow the Conventional Commits format (`type(scope): description`).
 2. **Clean Branch State**: Keep the working directory clean and unstaged changes minimal. Sensitive files, credentials, and `tmp/` scratch files must never be committed.
+
+### 🚨 Invariant 5: Zero Hardcoded Secrets (凭据与安全性硬约束)
+1. **No Credentials in Code**: NEVER hardcode API keys, tokens, database passwords, or private keys in source code or documentation.
+2. **Environment Variable Injection**: All secrets and environment-specific parameters must be loaded through `.env` / environment variables.
