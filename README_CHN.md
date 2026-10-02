@@ -1,77 +1,103 @@
-# 通用项目工作区与初始模版 (Universal Workspace Starter Template)
+# SCC 多云安全与事件威胁检测 (ETD) 车队级自动化工具包 (`scc-multicloud-sec`)
 
-一个轻量、模块化、生产就绪的工作区初始脚手架模版，专为跨技术栈的现代软件工程开发、Google Cloud 会话隔离以及多智能体（Multi-Agent）AI 结对编程设计。
+一个模块化、生产就绪的 **Google Cloud Security Command Center (SCC)** 与 **Event Threat Detection (ETD)** 跨项目、文件夹及组织级规模化自动化工具包与工程工作区，内置 Google Cloud 会话级凭据隔离与多智能体（Multi-Agent）研发治理规范。
 
 ---
 
-## 🌟 核心特性
+## 🌟 核心能力
 
-1. **Google Cloud 会话级凭据与配置隔离 (`.gcloud/` & `CLOUDSDK_CONFIG`)**：
-   - 保证 `gcloud` 命令行配置、当前项目及认证凭据严格隔离在当前项目目录内。
-   - 彻底避免在多个代码仓库或多终端 Shell 间发生账号、Project 串扰和配置污染。
+1. **SCC 与 ETD 车队级管理 CLI (`scripts/scc_etd_fleet_manager.py`)**：
+   - **车队级计费层级与 ETD 状态巡检 (`audit`)**：自动发现指定文件夹（Folder）下的所有活跃项目（或指定项目列表），调用公开的 `billingMetadata`、`securityCenterSettings` 与 `securityCenterServices/event-threat-detection` API，实时核查 `billingTier`（`PREMIUM` vs `STANDARD`）、首次激活时间、服务账号及已启用的内置检测器数量（152+ 内置检测模块）。
+   - **前置 API 与服务代理自动化预配 (`prepare`)**：批量启用 SCC 前置 API（`securitycentermanagement.googleapis.com`、`securitycenter.googleapis.com`、`cloudresourcemanager.googleapis.com`），预创建项目级服务身份（`service-<PROJECT_NUMBER>@security-center-api.iam.gserviceaccount.com`），并**仅针对尚未完成层级切换的项目**生成一键控制台激活直达链接（`https://console.cloud.google.com/security/command-center/onboarding?project=<PROJECT_ID>`）。
+   - **内置 ETD 服务与检测器模块配置 (`configure-etd`)**：支持在 `organizations/*`、`folders/*` 或 `projects/*` 任意层级设置 `intendedEnablementState`（`ENABLED`、`DISABLED`、`INHERITED`）及单个内置检测器模块覆盖策略，并原生支持 `--validate-only` 无损预检。
 
-2. **多智能体协作框架 (`.agents/AGENTS.md`)**：
-   - 标准化四角色分工：**Architect**（系统架构设计）、**Developer**（软件代码开发）、**QA**（质量保证与测试）、**DevOps**（运维与版本控制）。
-   - 明确职责边界与结构化调度协作时序流程。
+2. **内置 ETD 服务与模块 Terraform 模块 (`terraform/modules/scc-etd-service`)**：
+   - 填补 `hashicorp/google`（截至 `<= v8.5.0` 仅支持 ETD *自定义*模块）的功能空白，通过封装 **Public GA 的 Security Center Management API v1**（`securityCenterServices/event-threat-detection`）并结合 `data "http"` 实现实时状态回读与配置漂移检测。
+   - 同时支持直接调用 `REST_API`（带 `updateMask=intendedEnablementState,modules` 的 `PATCH` 请求）与非交互式 `GCLOUD_CLI`（`gcloud scc manage services update event-threat-detection --quiet`）两种执行引擎。
 
-3. **硬性工程治理约束**：
-   - **1:1 双语文档同步**：默认英文文档（`*.md`）与中文文档（`*_CHN.md`）保持原子性双向同步。
-   - **临时脚本统一隔离**：所有一次性验证脚本、排查探针及中间产物严格隔离在 `tmp/` 目录下。
-   - **质量与自测验证**：强制要求单元测试覆盖、语法检查与构建校验。
-   - **规范化提交（Conventional Commits）**：统一 Git 提交规范与清晰的版本历史。
+3. **实测技术验证报告与架构指南 (`docs/SCC_ETD_OPEN_QUESTIONS_CHN.md`)**：
+   - 详尽记录项目级 SCC Premium 层级激活的底层 API 根因分析（`PANTHEON` 内部可见性限制 vs 公开状态巡检接口）、Terraform 内置 ETD 模块自动化方案，以及无 Organization 级权限下基于 Folder/Project 的三种规模化落地范式。
 
-4. **通用环境与配置隔离**：
-   - 通过 `.envrc` 与 `.env.example` 实现工作区级别的环境隔离与 `direnv` 自动加载。
-   - 防止敏感凭据与环境变量泄露至全局 Shell 环境。
-
-5. **多语言级 `.gitignore` 安全防护**：
-   - 覆盖 AI 编程助手临时文件（`.gemini/`, `.cursor/`, `.jetski/` 等）、IDE 配置、敏感凭据（`.gcloud/`, `.env`），以及 Python、Node/TS、Go、Java、Rust、C/C++ 的多语言编译构建缓存。
+4. **Google Cloud 会话级凭据隔离与多智能体工程治理**：
+   - 将 `gcloud` 配置与认证凭据严格隔离在工作区 `.gcloud/` 目录内（`CLOUDSDK_CONFIG`）。
+   - 严格遵循 `.agents/AGENTS.md` 中的 1:1 中英双语同步（`*.md` 与 `*_CHN.md`）、`tmp/` 临时脚本隔离、自动化单元测试验证及零硬编码凭据约束。
 
 ---
 
 ## 📂 目录结构
 
 ```text
-jetski-workspace-template/
-├── .agents/               # Multi-Agent 协作规则与角色定义
-│   └── AGENTS.md          # 四角色协作流程与硬性治理规范
-├── .vscode/               # 统一的 IDE 编辑器配置与终端环境隔离
+scc-multicloud-sec/
+├── .agents/                                   # Multi-Agent 协作规则与角色定义
+│   └── AGENTS.md                              # 四角色协作流程与硬性治理规范
+├── .vscode/                                   # 统一的 IDE 编辑器配置与终端环境隔离
 │   └── settings.json
-├── scripts/               # 项目自动化与初始化脚本
-│   └── init_project.sh    # 一键工作区初始化脚本
-├── tmp/                   # 临时脚本、调试探针沙盒
+├── docs/                                      # 实测技术验证报告与架构方案指南
+│   ├── SCC_ETD_OPEN_QUESTIONS.md              # SCC 与 ETD Q1-Q3 根因分析与解决方案 (英文)
+│   └── SCC_ETD_OPEN_QUESTIONS_CHN.md          # SCC 与 ETD Q1-Q3 根因分析与解决方案 (中文)
+├── scripts/                                   # 项目自动化与 SCC/ETD 车队级 CLI 工具
+│   ├── init_project.sh                        # 一键工作区初始化脚本
+│   └── scc_etd_fleet_manager.py               # 车队级 SCC 层级巡检、预配置与 ETD 管理 CLI
+├── terraform/                                 # 可复用 Terraform 模块与多项目示例
+│   ├── examples/
+│   │   └── project-and-folder-etd/            # 文件夹级策略继承 + 项目群 ETD 编排示例
+│   │       ├── main.tf
+│   │       ├── README.md
+│   │       └── README_CHN.md
+│   └── modules/
+│       └── scc-etd-service/                   # 内置 ETD 服务与检测器模块 Terraform 模块
+│           ├── main.tf
+│           ├── outputs.tf
+│           ├── README.md
+│           ├── README_CHN.md
+│           ├── variables.tf
+│           └── versions.tf
+├── tests/                                     # 自动化单元测试套件
+│   └── test_scc_etd_fleet_manager.py          # 针对请求构建、状态巡检与 CLI 逻辑的单元测试
+├── tmp/                                       # 临时脚本、调试探针沙盒 (已被 gitignore 忽略)
 │   └── .gitkeep
-├── .env.example           # 项目环境变量配置示例
-├── .envrc                 # 通用 direnv 环境加载器与 gcloud 隔离器
-├── .gitignore             # 多层安全、AI 临时产物与多语言忽略规则
-├── README.md              # 项目根文档 (英文)
-└── README_CHN.md          # 项目根文档 (中文 1:1 双向同步)
+├── .env.example                               # 项目环境变量配置示例
+├── .envrc                                     # 通用 direnv 环境加载器与 gcloud 隔离器
+├── .gitignore                                 # 多层安全、AI 临时产物与多语言忽略规则
+├── README.md                                  # 项目根文档 (英文)
+└── README_CHN.md                              # 项目根文档 (中文 1:1 双向同步)
 ```
 
 ---
 
 ## 🚀 快速启动指南
 
-### 第一步：复制模版至新项目
+### 1. 巡检文件夹（Folder）或项目群的 SCC 计费层级与 ETD 生效状态
 ```bash
-cp -r /path/to/jetski-workspace-template /path/to/my-new-project
-cd /path/to/my-new-project
+# 巡检指定项目列表
+python3 scripts/scc_etd_fleet_manager.py audit --projects <PROJECT_ID_1>,<PROJECT_ID_2>
+
+# 自动发现并巡检指定 GCP 文件夹下的所有活跃项目
+python3 scripts/scc_etd_fleet_manager.py audit --folder <FOLDER_ID>
 ```
 
-### 第二步：初始化工作区
+### 2. 项目群 SCC 激活前置准备（批量启用 API、预创建服务代理、输出未激活项目直达链接）
 ```bash
-chmod +x scripts/*.sh
-./scripts/init_project.sh
+python3 scripts/scc_etd_fleet_manager.py prepare --folder <FOLDER_ID>
 ```
 
-### 第三步：配置环境变量与云认证
-根据项目依赖和运行时需求编辑 `.env`：
+### 3. 配置内置 ETD 服务与检测器模块（支持 Folder 或 Project 作用域）
 ```bash
-nano .env  # 或在编辑器中直接打开
+# 在文件夹（Folder）层级一次性启用 ETD（自动级联生效至所有状态为 INHERITED 的子项目）
+python3 scripts/scc_etd_fleet_manager.py configure-etd \
+  --scope folders/<FOLDER_ID> \
+  --state ENABLED \
+  --enable-modules PERSISTENCE_IAM_ANOMALOUS_GRANT,MALWARE_BAD_DOMAIN,CRYPTOMINING_POOL_DOMAIN
+
+# 针对单个项目执行无损 Dry-Run 预检校验 (--validate-only)
+python3 scripts/scc_etd_fleet_manager.py configure-etd \
+  --scope projects/<PROJECT_ID> \
+  --state ENABLED \
+  --enable-modules PERSISTENCE_IAM_ANOMALOUS_GRANT \
+  --validate-only
 ```
 
-如果项目需要与 Google Cloud 交互，在当前隔离环境中登录认证：
+### 4. 运行自动化单元测试
 ```bash
-gcloud auth login
+python3 -m unittest discover -s tests -v
 ```
-*(所有登录凭据和当前配置均安全保存在本地 `.gcloud/` 目录中，绝不影响您机器上的其他项目)*
