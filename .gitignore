@@ -1,20 +1,15 @@
 # ==============================================================================
-# 1. AI Coding Assistants & Jetski Agent Environments
+# 1. Local Dev Workspace, IDE & AI Assistant Directories
 # ==============================================================================
-.agents/skills/
+.agent/
+.agents/
+.config/
 .gemini/
 .jetski/
 .cursor/
 .windsurf/
 .idx/
-scratch/
-*.prompt.md
-TODO.md
-*.todo.md
-
-# ==============================================================================
-# 2. IDE & Editor Configurations
-# ==============================================================================
+.vscode/
 .idea/
 *.iml
 *.iws
@@ -22,29 +17,49 @@ TODO.md
 .project
 .classpath
 .factorypath
-bin/
 *.swp
 *.swo
 *~
 *.code-workspace
+scratch/
+*.prompt.md
+TODO.md
+*.todo.md
 
 # ==============================================================================
-# 3. Local Environment Variables & Security Secrets
+# 2. Local Environment Variables, Cloud SDK & Security Secrets
 # ==============================================================================
 .env
-.env.local
-.env.*.local
+.env.*
+.envrc
+.gcloud/
 *.pem
 *.key
 *credentials*.json
 *service-account*.json
-.gcloud/*
-!.gcloud/.gitkeep
+scripts/init_project.sh
 
 # ==============================================================================
-# 4. Multi-Language Builds, Binaries & Test Caches
+# 3. Terraform Local State & Caches
 # ==============================================================================
-# Python
+**/.terraform/
+**/.terraform.*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ==============================================================================
+# 4. Python & Test Caches
+# ==============================================================================
 venv/
 .venv/
 __pycache__/
@@ -56,39 +71,12 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Node / TypeScript / Frontend
-node_modules/
-dist/
-build/
-.next/
-.npm/
-*.tsbuildinfo
-
-# Golang
-*.exe
-__debug_bin*
-*.test
-
-# Java & Maven / Gradle
-target/
-*.class
-hs_err_pid*.log
-.mvn/timing.properties
-.gradle/
-
-# Rust / C / C++
-/target/
-*.o
-*.obj
-*.so
-*.dylib
-*.dll
-*.a
-
 # ==============================================================================
-# 5. Logs & Temporary Scratch Scripts (Isolation Invariant)
+# 5. Logs & Temporary Scratch Sandbox
 # ==============================================================================
 *.log
 logs/
-tmp/*
-!tmp/.gitkeep
+tmp/
+bin/
+dist/
+build/

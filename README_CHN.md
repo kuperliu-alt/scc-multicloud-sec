@@ -1,6 +1,6 @@
 # SCC 多云安全与事件威胁检测 (ETD) 车队级自动化工具包 (`scc-multicloud-sec`)
 
-一个基于 **100% Public GA 公开 API** 构建的模块化、生产就绪 **Google Cloud Security Command Center (SCC)** 与 **Event Threat Detection (ETD)** 跨项目、文件夹及组织级规模化自动化工具包与工程工作区，内置 Google Cloud 会话级凭据隔离与多智能体（Multi-Agent）研发治理规范。
+一个基于 **100% Public GA 公开 API** 构建的模块化、生产就绪 **Google Cloud Security Command Center (SCC)** 与 **Event Threat Detection (ETD)** 跨项目、文件夹及组织级规模化自动化工具包。
 
 ---
 
@@ -18,25 +18,16 @@
 3. **实测技术验证报告与架构指南 (`docs/SCC_ETD_OPEN_QUESTIONS_CHN.md`)**：
    - 详尽记录项目级 SCC Premium 层级激活的架构原因与公开状态巡检方案、Terraform 内置 ETD 模块自动化方案，以及无 Organization 级权限下基于 Folder/Project 的三种规模化落地范式。
 
-4. **Google Cloud 会话级凭据隔离与多智能体工程治理**：
-   - 将 `gcloud` 配置与认证凭据严格隔离在工作区 `.gcloud/` 目录内（`CLOUDSDK_CONFIG`）。
-   - 严格遵循 `.agents/AGENTS.md` 中的 1:1 中英双语同步（`*.md` 与 `*_CHN.md`）、`tmp/` 临时脚本隔离、自动化单元测试验证及零硬编码凭据约束。
-
 ---
 
 ## 📂 目录结构
 
 ```text
 scc-multicloud-sec/
-├── .agents/                                   # Multi-Agent 协作规则与角色定义
-│   └── AGENTS.md                              # 四角色协作流程与硬性治理规范
-├── .vscode/                                   # 统一的 IDE 编辑器配置与终端环境隔离
-│   └── settings.json
 ├── docs/                                      # 实测技术验证报告与架构方案指南
 │   ├── SCC_ETD_OPEN_QUESTIONS.md              # SCC 与 ETD Q1-Q3 根因分析与解决方案 (英文)
 │   └── SCC_ETD_OPEN_QUESTIONS_CHN.md          # SCC 与 ETD Q1-Q3 根因分析与解决方案 (中文)
-├── scripts/                                   # 项目自动化与 SCC/ETD 车队级 CLI 工具
-│   ├── init_project.sh                        # 一键工作区初始化脚本
+├── scripts/                                   # SCC/ETD 车队级自动化 CLI 工具
 │   └── scc_etd_fleet_manager.py               # 车队级 SCC 层级巡检、预配置与 ETD 管理 CLI
 ├── terraform/                                 # 可复用 Terraform 模块与多项目示例
 │   ├── examples/
@@ -54,11 +45,6 @@ scc-multicloud-sec/
 │           └── versions.tf
 ├── tests/                                     # 自动化单元测试套件
 │   └── test_scc_etd_fleet_manager.py          # 针对请求构建、状态巡检与 CLI 逻辑的单元测试
-├── tmp/                                       # 临时脚本、调试探针沙盒 (已被 gitignore 忽略)
-│   └── .gitkeep
-├── .env.example                               # 项目环境变量配置示例
-├── .envrc                                     # 通用 direnv 环境加载器与 gcloud 隔离器
-├── .gitignore                                 # 多层安全、AI 临时产物与多语言忽略规则
 ├── README.md                                  # 项目根文档 (英文)
 └── README_CHN.md                              # 项目根文档 (中文 1:1 双向同步)
 ```

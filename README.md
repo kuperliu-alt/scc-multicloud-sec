@@ -1,6 +1,6 @@
 # SCC Multi-Cloud Security & ETD Fleet Automation (`scc-multicloud-sec`)
 
-A modular, production-ready toolkit and workspace for automating **Google Cloud Security Command Center (SCC)** and **Event Threat Detection (ETD)** at project, folder, and organization fleet scale using **100% Public GA APIs**, with built-in Google Cloud session isolation and Multi-Agent governance.
+A modular, production-ready toolkit for automating **Google Cloud Security Command Center (SCC)** and **Event Threat Detection (ETD)** at project, folder, and organization fleet scale using **100% Public GA APIs**.
 
 ---
 
@@ -18,25 +18,16 @@ A modular, production-ready toolkit and workspace for automating **Google Cloud 
 3. **Verified Technical Architecture & Q&A Guide (`docs/SCC_ETD_OPEN_QUESTIONS.md`)**:
    - Comprehensive root-cause analysis and live verification logs for Project-level SCC Premium tier activation, Terraform ETD built-in module automation, and Folder/Project-scoped fleet patterns without Org-level IAM ownership.
 
-4. **Google Cloud Session-Level Isolation & Multi-Agent Governance**:
-   - Isolates `gcloud` configuration and authentication state inside `.gcloud/` (`CLOUDSDK_CONFIG`).
-   - Enforces 1:1 bilingual documentation (`*.md` and `*_CHN.md`), `tmp/` scratch script isolation, automated unit testing, and zero hardcoded secrets per `.agents/AGENTS.md`.
-
 ---
 
 ## 📂 Directory Layout
 
 ```text
 scc-multicloud-sec/
-├── .agents/                                   # Multi-Agent coordination rules & role definitions
-│   └── AGENTS.md                              # 4-Role collaboration workflow and mandatory invariants
-├── .vscode/                                   # Standardized IDE editor settings & terminal env isolation
-│   └── settings.json
 ├── docs/                                      # Technical verification reports & architecture guides
 │   ├── SCC_ETD_OPEN_QUESTIONS.md              # Verified SCC & ETD Q1-Q3 root-cause & solutions (English)
 │   └── SCC_ETD_OPEN_QUESTIONS_CHN.md          # Verified SCC & ETD Q1-Q3 root-cause & solutions (Chinese)
-├── scripts/                                   # Project automation & SCC/ETD fleet CLI tools
-│   ├── init_project.sh                        # One-click project workspace bootstrap script
+├── scripts/                                   # SCC/ETD fleet automation CLI tools
 │   └── scc_etd_fleet_manager.py               # Fleet-scale SCC tier audit, pre-flight & ETD manager CLI
 ├── terraform/                                 # Reusable Terraform modules & fleet examples
 │   ├── examples/
@@ -54,11 +45,6 @@ scc-multicloud-sec/
 │           └── versions.tf
 ├── tests/                                     # Automated unit test suites
 │   └── test_scc_etd_fleet_manager.py          # Unit tests for payload generation, audit & CLI logic
-├── tmp/                                       # Temporary scripts, probes, and scratch sandbox (gitignored)
-│   └── .gitkeep
-├── .env.example                               # Example project environment variable configuration
-├── .envrc                                     # Universal direnv environment loader & gcloud isolator
-├── .gitignore                                 # Multi-layer security, AI-artifact, and multi-language ignore rules
 ├── README.md                                  # Project documentation (English)
 └── README_CHN.md                              # Project documentation (Chinese, 1:1 synchronized)
 ```
