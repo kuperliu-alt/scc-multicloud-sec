@@ -3,23 +3,28 @@
 
 Provides programmatic inspection, pre-activation preparation, and fleet-scale
 Event Threat Detection (ETD) service/module configuration across GCP Projects,
-Folders, and Organizations using the public Security Center Management API (v1)
-and Security Center Settings API (v1beta2).
+Folders, and Organizations using the 100% Public GA Security Center Management
+API v1 (`securitycentermanagement.googleapis.com/v1`).
 
 Key Capabilities:
 1. `audit`:
-   - Reads project/org SCC billing tier (`STANDARD`, `PREMIUM`, `ENTERPRISE`)
-     via `GET /v1/{parent}/locations/global/billingMetadata`.
-   - Reads project/org SCC onboarding status and service agent principal via
-     `GET /v1beta2/{parent}/securityCenterSettings`.
-   - Reads ETD built-in service and detector module enablement states via
+   - Reads ETD built-in service and detector module enablement states via the
+     official Public GA endpoint:
      `GET /v1/{parent}/locations/global/securityCenterServices/event-threat-detection`.
-   - Generates direct Cloud Console onboarding URLs for any project that still
-     requires the Console-only (`PANTHEON` visibility) tier activation click.
+   - Per the official Security Center Management API v1 specification,
+     `effectiveEnablementState` reflects both ancestor inheritance and project
+     billing tier eligibility / onboarding status. Because ETD is a
+     Premium/Enterprise-only service, `effectiveEnablementState=ENABLED`
+     verifies that both SCC Premium/Enterprise and ETD are active on a project.
+   - Generates direct Cloud Console onboarding URLs for any project where ETD is
+     configured (`intendedEnablementState` is `ENABLED` or `INHERITED`) but
+     `effectiveEnablementState` remains `DISABLED` (indicating the project still
+     requires the one-time Console tier activation).
 2. `prepare`:
-   - Enables required APIs (`securitycenter.googleapis.com` and
-     `securitycentermanagement.googleapis.com`) across one or more projects or
-     all active projects under a Folder.
+   - Enables required APIs (`securitycenter.googleapis.com`,
+     `securitycentermanagement.googleapis.com`,
+     `cloudresourcemanager.googleapis.com`) across one or more projects or all
+     active projects under a Folder.
 3. `configure-etd`:
    - Programmatically updates `intendedEnablementState` (`ENABLED`, `DISABLED`,
      `INHERITED`) and built-in ETD detector modules (`modules` map) at the
@@ -44,7 +49,6 @@ import urllib.parse
 import urllib.request
 
 SCM_API_BASE = "https://securitycentermanagement.googleapis.com/v1"
-SCC_SETTINGS_API_BASE = "https://securitycenter.googleapis.com/v1beta2"
 
 VALID_RESOURCE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$")
 VALID_MODULE_NAME_RE = re.compile(r"^[A-Z0-9_]{2,128}$")
@@ -74,13 +78,26 @@ def validate_parent(scope: str, resource_id: str) -> str:
   return f"{scope}/{valid_id}"
 
 
+def parse_scope_path(scope_path: str) -> tuple[str, str]:
+  """Parses a `<scope>/<id>` string into `(scope, id)` and validates both."""
+  parts = scope_path.strip().split("/", 1)
+  if len(parts) != 2:
+    raise ValueError(
+        f"Invalid --scope {scope_path!r}. Expected format:"
+        " 'projects/<ID>', 'folders/<ID>', or 'organizations/<ID>'."
+    )
+  scope, rid = parts[0].strip(), parts[1].strip()
+  validate_parent(scope, rid)
+  return scope, rid
+
+
 def validate_module_name(module_name: str) -> str:
   """Validates an ETD built-in module identifier."""
   cleaned = module_name.strip().upper()
   if not VALID_MODULE_NAME_RE.match(cleaned):
     raise ValueError(
         f"Invalid ETD module name: {module_name!r}. Expected uppercase"
-        " identifier (e.g. GKE_NODEPORT_SERVICE_CREATED)."
+        " identifier (e.g. PERSISTENCE_IAM_ANOMALOUS_GRANT)."
     )
   return cleaned
 
@@ -99,14 +116,11 @@ def get_access_token() -> str:
   if env_token:
     return env_token
   gcloud_bin = get_gcloud_binary()
-  env = os.environ.copy()
-  env.setdefault("CLOUDSDK_METRICS_ENVIRONMENT", "datacloud.jetski")
   proc = subprocess.run(
       [gcloud_bin, "auth", "print-access-token"],
       capture_output=True,
       text=True,
       check=False,
-      env=env,
   )
   if proc.returncode != 0 or not proc.stdout.strip():
     raise RuntimeError(
@@ -120,8 +134,6 @@ def list_projects_in_folder(folder_id: str) -> list[str]:
   """Lists all ACTIVE project IDs directly under the specified GCP Folder."""
   valid_folder = validate_resource_id(folder_id, label="folder_id")
   gcloud_bin = get_gcloud_binary()
-  env = os.environ.copy()
-  env.setdefault("CLOUDSDK_METRICS_ENVIRONMENT", "datacloud.jetski")
   filter_expr = (
       f"parent.id={valid_folder} AND parent.type=folder AND"
       " lifecycleState=ACTIVE"
@@ -137,7 +149,6 @@ def list_projects_in_folder(folder_id: str) -> list[str]:
       capture_output=True,
       text=True,
       check=False,
-      env=env,
   )
   if proc.returncode != 0:
     raise RuntimeError(
@@ -196,10 +207,7 @@ class ResourceAuditResult:
   """Structured SCC & ETD audit result for a single resource."""
 
   parent: str
-  billing_tier: str
-  onboarded: bool
-  onboarding_time: str | None
-  service_account: str | None
+  tier_eligibility: str
   etd_intended_state: str
   etd_effective_state: str
   etd_enabled_modules_count: int
@@ -217,41 +225,14 @@ def audit_resource(
     token: str,
     quota_project: str | None = None,
 ) -> ResourceAuditResult:
-  """Audits SCC billing tier, onboarding status, and ETD service configuration."""
+  """Audits ETD service configuration and SCC Premium eligibility via Public GA API."""
   parent = validate_parent(scope, resource_id)
   effective_quota_project = quota_project or (
       resource_id if scope == "projects" else None
   )
   notes: list[str] = []
 
-  # 1. Query BillingMetadata (supported on projects and organizations)
-  billing_tier = "N/A (FOLDER_INHERITED)"
-  if scope in ("projects", "organizations"):
-    bm_url = f"{SCM_API_BASE}/{parent}/locations/global/billingMetadata"
-    bm_status, bm_data = api_request(
-        "GET", bm_url, token, quota_project=effective_quota_project
-    )
-    if bm_status == 200:
-      billing_tier = bm_data.get("billingTier", "UNKNOWN")
-    else:
-      err_msg = bm_data.get("error", {}).get("message", f"HTTP {bm_status}")
-      billing_tier = f"ERROR ({bm_status})"
-      notes.append(f"billingMetadata: {err_msg}")
-
-  # 2. Query v1beta2 SecurityCenterSettings
-  onboarded = False
-  onboarding_time = None
-  service_account = None
-  scs_url = f"{SCC_SETTINGS_API_BASE}/{parent}/securityCenterSettings"
-  scs_status, scs_data = api_request(
-      "GET", scs_url, token, quota_project=effective_quota_project
-  )
-  if scs_status == 200:
-    onboarding_time = scs_data.get("onboardingTime")
-    service_account = scs_data.get("orgServiceAccount")
-    onboarded = bool(onboarding_time or service_account)
-
-  # 3. Query v1 SecurityCenterServices for event-threat-detection
+  # Query Official Public GA v1 SecurityCenterServices for event-threat-detection
   etd_url = (
       f"{SCM_API_BASE}/{parent}/locations/global/"
       "securityCenterServices/event-threat-detection"
@@ -279,23 +260,29 @@ def audit_resource(
     err_msg = etd_data.get("error", {}).get("message", f"HTTP {etd_status}")
     notes.append(f"event-threat-detection: {err_msg}")
 
+  if scope == "folders":
+    tier_eligibility = "FOLDER_POLICY_SCOPE"
+  elif etd_effective == "ENABLED":
+    tier_eligibility = "PREMIUM_OR_ENTERPRISE"
+  elif etd_intended == "DISABLED":
+    tier_eligibility = "ETD_INTENTIONALLY_DISABLED"
+  else:
+    tier_eligibility = "STANDARD_OR_UNONBOARDED"
+
   console_url = None
-  if scope == "projects" and billing_tier not in ("PREMIUM", "ENTERPRISE"):
+  if scope == "projects" and etd_effective != "ENABLED" and etd_intended != "DISABLED":
     console_url = (
         "https://console.cloud.google.com/security/command-center/"
         f"onboarding?project={resource_id}"
     )
     notes.append(
-        "Project tier is not PREMIUM; activate via Console deep-link"
-        " (PANTHEON-restricted RPC)."
+        "ETD effectiveEnablementState is not ENABLED; ensure SCC Premium is"
+        " activated in Google Cloud Console."
     )
 
   return ResourceAuditResult(
       parent=parent,
-      billing_tier=billing_tier,
-      onboarded=onboarded,
-      onboarding_time=onboarding_time,
-      service_account=service_account,
+      tier_eligibility=tier_eligibility,
       etd_intended_state=etd_intended,
       etd_effective_state=etd_effective,
       etd_enabled_modules_count=enabled_count,
@@ -438,6 +425,7 @@ def prepare_project_apis(project_id: str, dry_run: bool = False) -> dict[str, An
   apis = [
       "securitycenter.googleapis.com",
       "securitycentermanagement.googleapis.com",
+      "cloudresourcemanager.googleapis.com",
   ]
   cmd = [
       get_gcloud_binary(),
@@ -450,11 +438,7 @@ def prepare_project_apis(project_id: str, dry_run: bool = False) -> dict[str, An
   if dry_run:
     return {"project_id": valid_project, "dry_run": True, "command": cmd}
 
-  env = os.environ.copy()
-  env.setdefault("CLOUDSDK_METRICS_ENVIRONMENT", "datacloud.jetski")
-  proc = subprocess.run(
-      cmd, capture_output=True, text=True, check=False, env=env
-  )
+  proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
   if proc.returncode != 0:
     raise RuntimeError(
         f"Failed to enable SCC APIs on {valid_project}: {proc.stderr.strip()}"
@@ -465,7 +449,7 @@ def prepare_project_apis(project_id: str, dry_run: bool = False) -> dict[str, An
 def format_audit_table(results: list[ResourceAuditResult]) -> str:
   """Renders a human-readable table of ResourceAuditResult items."""
   header = (
-      f"{'RESOURCE':<36} {'BILLING_TIER':<14} {'ONBOARDED':<10} "
+      f"{'RESOURCE':<38} {'TIER_ELIGIBILITY':<28} "
       f"{'ETD_INTENDED':<14} {'ETD_EFFECTIVE':<14} {'MODULES(EN/DIS)':<16}"
   )
   sep = "-" * len(header)
@@ -473,7 +457,7 @@ def format_audit_table(results: list[ResourceAuditResult]) -> str:
   for r in results:
     mod_summary = f"{r.etd_enabled_modules_count}/{r.etd_disabled_modules_count}"
     lines.append(
-        f"{r.parent:<36} {r.billing_tier:<14} {str(r.onboarded):<10} "
+        f"{r.parent:<38} {r.tier_eligibility:<28} "
         f"{r.etd_intended_state:<14} {r.etd_effective_state:<14} {mod_summary:<16}"
     )
     if r.console_onboarding_url:
@@ -486,6 +470,8 @@ def format_audit_table(results: list[ResourceAuditResult]) -> str:
 def resolve_targets(args: argparse.Namespace) -> list[tuple[str, str]]:
   """Resolves CLI scope arguments into a list of (scope, resource_id) tuples."""
   targets: list[tuple[str, str]] = []
+  if getattr(args, "scope", None):
+    targets.append(parse_scope_path(args.scope))
   if getattr(args, "organization", None):
     targets.append(
         ("organizations", validate_resource_id(args.organization, "org_id"))
@@ -505,8 +491,8 @@ def resolve_targets(args: argparse.Namespace) -> list[tuple[str, str]]:
         targets.append(("projects", validate_resource_id(raw_pid, "project_id")))
   if not targets:
     raise ValueError(
-        "Specify at least one target via --project, --projects, --folder, or"
-        " --organization."
+        "Specify at least one target via --scope, --project, --projects,"
+        " --folder, or --organization."
     )
   return targets
 
@@ -524,7 +510,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   # 1. `audit` subcommand
   audit_p = subparsers.add_parser(
       "audit",
-      help="Audit SCC billing tier, onboarding status, and ETD service state.",
+      help="Audit SCC tier eligibility and ETD service/module effective state.",
+  )
+  audit_p.add_argument(
+      "--scope",
+      help="Canonical target path (e.g. projects/<ID>, folders/<ID>, organizations/<ID>).",
   )
   audit_p.add_argument("--project", help="Single GCP Project ID or Number.")
   audit_p.add_argument(
@@ -569,6 +559,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
           " Project, Folder, or Organization scope."
       ),
   )
+  cfg_p.add_argument(
+      "--scope",
+      help="Canonical target path (e.g. projects/<ID>, folders/<ID>, organizations/<ID>).",
+  )
   cfg_p.add_argument("--project", help="Target GCP Project ID or Number.")
   cfg_p.add_argument(
       "--projects", help="Comma-separated list of GCP Project IDs."
@@ -587,6 +581,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   )
   cfg_p.add_argument(
       "--enablement-state",
+      "--state",
+      dest="enablement_state",
       choices=["ENABLED", "DISABLED", "INHERITED"],
       default="ENABLED",
       help="Intended service enablement state (default: ENABLED).",
@@ -595,7 +591,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
       "--enable-modules",
       help=(
           "Comma-separated list of built-in ETD module names to set to ENABLED"
-          " (e.g. GKE_NODEPORT_SERVICE_CREATED,MALWARE_BAD_DOMAIN)."
+          " (e.g. PERSISTENCE_IAM_ANOMALOUS_GRANT,MALWARE_BAD_DOMAIN)."
       ),
   )
   cfg_p.add_argument(

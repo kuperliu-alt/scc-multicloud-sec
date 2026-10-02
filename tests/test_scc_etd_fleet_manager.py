@@ -38,6 +38,16 @@ class TestSccEtdFleetManager(unittest.TestCase):
     with self.assertRaises(ValueError):
       fm.validate_parent("invalid_scope", "123")
 
+  def test_parse_scope_path(self) -> None:
+    self.assertEqual(
+        fm.parse_scope_path("projects/my-proj"), ("projects", "my-proj")
+    )
+    self.assertEqual(
+        fm.parse_scope_path("folders/12345"), ("folders", "12345")
+    )
+    with self.assertRaises(ValueError):
+      fm.parse_scope_path("invalid-path")
+
   def test_validate_module_name(self) -> None:
     self.assertEqual(
         fm.validate_module_name("gke_nodeport_service_created"),
@@ -108,19 +118,6 @@ class TestSccEtdFleetManager(unittest.TestCase):
         (
             200,
             {
-                "name": "projects/sample-std/locations/global/billingMetadata",
-                "billingTier": "STANDARD",
-            },
-        ),
-        (
-            200,
-            {
-                "name": "projects/sample-std/securityCenterSettings",
-            },
-        ),
-        (
-            200,
-            {
                 "name": (
                     "projects/sample-std/locations/global/"
                     "securityCenterServices/event-threat-detection"
@@ -136,8 +133,7 @@ class TestSccEtdFleetManager(unittest.TestCase):
         ),
     ]
     res = fm.audit_resource("projects", "sample-std", token="fake-token")
-    self.assertEqual(res.billing_tier, "STANDARD")
-    self.assertFalse(res.onboarded)
+    self.assertEqual(res.tier_eligibility, "STANDARD_OR_UNONBOARDED")
     self.assertEqual(res.etd_effective_state, "DISABLED")
     self.assertEqual(
         res.console_onboarding_url,
@@ -150,23 +146,6 @@ class TestSccEtdFleetManager(unittest.TestCase):
       self, mock_api: mock.MagicMock
   ) -> None:
     mock_api.side_effect = [
-        (
-            200,
-            {
-                "name": "projects/sample-prem/locations/global/billingMetadata",
-                "billingTier": "PREMIUM",
-            },
-        ),
-        (
-            200,
-            {
-                "name": "projects/sample-prem/securityCenterSettings",
-                "orgServiceAccount": (
-                    "service-project-100@security-center-api.iam.gserviceaccount.com"
-                ),
-                "onboardingTime": "2026-09-15T00:00:00Z",
-            },
-        ),
         (
             200,
             {
@@ -188,8 +167,7 @@ class TestSccEtdFleetManager(unittest.TestCase):
         ),
     ]
     res = fm.audit_resource("projects", "sample-prem", token="fake-token")
-    self.assertEqual(res.billing_tier, "PREMIUM")
-    self.assertTrue(res.onboarded)
+    self.assertEqual(res.tier_eligibility, "PREMIUM_OR_ENTERPRISE")
     self.assertIsNone(res.console_onboarding_url)
     self.assertEqual(res.etd_enabled_modules_count, 1)
     self.assertEqual(res.etd_disabled_modules_count, 1)

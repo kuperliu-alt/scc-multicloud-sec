@@ -1,11 +1,18 @@
 locals {
-  parent = "${var.scope}/${var.target_id}"
+  parent_parts = split("/", var.parent)
+  scope        = local.parent_parts[0]
+  target_id    = local.parent_parts[1]
+
   effective_quota_project = (
     var.quota_project_id != ""
     ? var.quota_project_id
-    : (var.scope == "projects" ? var.target_id : "")
+    : (local.scope == "projects" ? local.target_id : "")
   )
-  service_resource_name = "${local.parent}/locations/global/securityCenterServices/${var.service_name}"
+
+  normalized_state = upper(var.intended_enablement_state)
+  normalized_mode  = upper(var.execution_mode)
+
+  service_resource_name = "${var.parent}/locations/global/securityCenterServices/${var.service_name}"
   scm_api_base          = "https://securitycentermanagement.googleapis.com/v1"
   service_endpoint      = "${local.scm_api_base}/${local.service_resource_name}"
 
@@ -16,62 +23,49 @@ locals {
   ]))
 
   modules_payload = {
-    for mod_name, mod_state in var.modules :
-    mod_name => {
-      intendedEnablementState = mod_state
+    for mod_name, mod_val in var.modules :
+    upper(mod_name) => {
+      intendedEnablementState = upper(
+        try(mod_val.intendedEnablementState, try(mod_val.enablement_state, tostring(mod_val)))
+      )
     }
   }
 
   patch_body = jsonencode(merge(
     {
       name                    = local.service_resource_name
-      intendedEnablementState = var.intended_enablement_state
+      intendedEnablementState = local.normalized_state
     },
     local.has_modules ? { modules = local.modules_payload } : {}
   ))
 
+  validate_query = var.validate_only ? "&validateOnly=true" : ""
+  patch_url      = "${local.service_endpoint}?updateMask=${local.update_mask}${local.validate_query}"
+
   gcloud_scope_flag = (
-    var.scope == "projects" ? "--project=${var.target_id}" :
-    var.scope == "folders" ? "--folder=${var.target_id}" :
-    "--organization=${var.target_id}"
+    local.scope == "projects" ? "--project=${local.target_id}" :
+    local.scope == "folders" ? "--folder=${local.target_id}" :
+    "--organization=${local.target_id}"
   )
 }
 
 resource "google_project_service" "scc_apis" {
-  for_each = var.scope == "projects" && var.enable_required_apis ? toset([
+  for_each = local.scope == "projects" && var.enable_required_apis ? toset([
     "securitycenter.googleapis.com",
     "securitycentermanagement.googleapis.com",
   ]) : toset([])
 
-  project            = var.target_id
+  project            = local.target_id
   service            = each.value
   disable_on_destroy = false
 }
 
 data "google_client_config" "current" {}
 
-data "http" "billing_metadata" {
-  count = var.scope != "folders" ? 1 : 0
-
-  url = "${local.scm_api_base}/${local.parent}/locations/global/billingMetadata"
-
-  request_headers = merge(
-    {
-      Authorization = "Bearer ${data.google_client_config.current.access_token}"
-      Accept        = "application/json"
-    },
-    local.effective_quota_project != "" ? {
-      "X-Goog-User-Project" = local.effective_quota_project
-    } : {}
-  )
-
-  depends_on = [google_project_service.scc_apis]
-}
-
 resource "local_file" "gcloud_module_config" {
-  count = var.execution_mode == "gcloud_cli" && local.has_modules ? 1 : 0
+  count = local.normalized_mode == "GCLOUD_CLI" && local.has_modules ? 1 : 0
 
-  filename        = "${path.module}/.terraform-scc-modules-${var.scope}-${var.target_id}.json"
+  filename        = "${path.module}/.terraform-scc-modules-${local.scope}-${local.target_id}.json"
   content         = jsonencode(local.modules_payload)
   file_permission = "0600"
 }
@@ -79,20 +73,21 @@ resource "local_file" "gcloud_module_config" {
 resource "terraform_data" "scc_service_config" {
   triggers_replace = [
     local.service_resource_name,
-    var.intended_enablement_state,
+    local.normalized_state,
     jsonencode(local.modules_payload),
-    var.execution_mode,
+    local.normalized_mode,
+    tostring(var.validate_only),
   ]
 
   input = {
     service_resource_name     = local.service_resource_name
-    intended_enablement_state = var.intended_enablement_state
+    intended_enablement_state = local.normalized_state
     modules                   = local.modules_payload
-    execution_mode            = var.execution_mode
+    execution_mode            = local.normalized_mode
   }
 
   provisioner "local-exec" {
-    command = var.execution_mode == "rest_api" ? (
+    command = local.normalized_mode == "REST_API" ? (
       <<-EOT
       python3 -c '
 import json, os, sys, urllib.request, urllib.error
@@ -123,17 +118,17 @@ except urllib.error.HTTPError as err:
       ) : (
       <<-EOT
       CLOUDSDK_CORE_DISABLE_PROMPTS=1 \
-      CLOUDSDK_METRICS_ENVIRONMENT=datacloud.jetski \
       gcloud scc manage services update "${var.service_name}" \
         "${local.gcloud_scope_flag}" \
-        --enablement-state="${lower(var.intended_enablement_state)}" \
+        --enablement-state="${lower(local.normalized_state)}" \
         ${local.has_modules ? "--module-config-file=${local_file.gcloud_module_config[0].filename}" : ""} \
+        ${var.validate_only ? "--validate-only" : ""} \
         --quiet
       EOT
     )
 
     environment = {
-      SCM_PATCH_URL     = "${local.service_endpoint}?updateMask=${local.update_mask}"
+      SCM_PATCH_URL     = local.patch_url
       SCM_PATCH_BODY    = local.patch_body
       SCM_QUOTA_PROJECT = local.effective_quota_project
       SCM_ACCESS_TOKEN  = data.google_client_config.current.access_token
@@ -162,16 +157,14 @@ data "http" "scc_service_state" {
   depends_on = [terraform_data.scc_service_config]
 }
 
-check "scc_premium_tier_verification" {
+check "scc_effective_enablement_verification" {
   assert {
     condition = (
-      !var.enforce_premium_tier_check ||
-      var.scope == "folders" ||
-      contains(
-        ["PREMIUM", "ENTERPRISE"],
-        try(jsondecode(data.http.billing_metadata[0].response_body).billingTier, "UNKNOWN")
-      )
+      !var.enforce_effective_enablement_check ||
+      local.scope == "folders" ||
+      local.normalized_state == "DISABLED" ||
+      try(jsondecode(data.http.scc_service_state.response_body).effectiveEnablementState, "UNKNOWN") == "ENABLED"
     )
-    error_message = "Target ${local.parent} SCC billingTier is not PREMIUM or ENTERPRISE. Project-level SCC Premium tier activation requires a one-time Console action at https://console.cloud.google.com/security/command-center/onboarding?project=${var.target_id} (PANTHEON-restricted RPC)."
+    error_message = "Target ${var.parent} ${var.service_name} effectiveEnablementState is not ENABLED. Per the Security Center Management API v1 specification, effectiveEnablementState remains DISABLED until SCC Premium/Enterprise tier is active on the project (https://console.cloud.google.com/security/command-center/onboarding?project=${local.target_id})."
   }
 }

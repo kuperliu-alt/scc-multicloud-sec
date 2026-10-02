@@ -1,6 +1,6 @@
 # Terraform 模块：SCC 事件威胁检测 (ETD) 内置服务与模块管理
 
-由于 `hashicorp/google` Terraform Provider（已核查至 `v8.5.0`）目前仅提供 ETD **自定义模块**资源（`google_scc_management_organization_event_threat_detection_custom_module` / `google_scc_event_threat_detection_custom_module`），尚未提供用于管理内置 `SecurityCenterService`（`securityCenterServices/event-threat-detection`）的原生资源，本模块基于 **Public GA 的 Security Center Management API v1** 填补了这一空白。
+由于 `hashicorp/google` Terraform Provider（已核查至 `v8.5.0`）目前仅提供 ETD **自定义模块**资源（`google_scc_management_organization_event_threat_detection_custom_module` / `google_scc_event_threat_detection_custom_module`），尚未提供用于管理内置 `SecurityCenterService`（`securityCenterServices/event-threat-detection`）的原生资源，本模块基于 **100% Public GA 的 Security Center Management API v1** 填补了这一空白。
 
 ---
 
@@ -12,10 +12,10 @@
    - 支持设置 `intended_enablement_state`（`ENABLED`、`DISABLED` 或 `INHERITED`）。
    - 支持通过 `updateMask=intendedEnablementState,modules` 针对指定内置检测器模块（如 `PERSISTENCE_IAM_ANOMALOUS_GRANT`、`CRYPTOMINING_POOL_DOMAIN`、`EXFILTRATION_BIGQUERY_ANOMALOUS_DATA_EGRESS`）进行状态覆盖，同时无损保留其余约 170 个内置检测器的默认状态。
 3. **双执行引擎模式（`REST_API` vs `GCLOUD_CLI`）**：
-   - **`REST_API`（默认，推荐）**：通过 `curl --fail-with-body` 直接调用 `PATCH https://securitycentermanagement.googleapis.com/v1/{parent}/locations/global/securityCenterServices/event-threat-detection`，并支持 `?validateOnly=true` 预检。
+   - **`REST_API`（默认，推荐）**：直接调用 `PATCH https://securitycentermanagement.googleapis.com/v1/{parent}/locations/global/securityCenterServices/event-threat-detection`，并支持 `?validateOnly=true` 预检。
    - **`GCLOUD_CLI`**：调用 `gcloud scc manage services update event-threat-detection --quiet`（在非交互式 Terraform 运行中必须附加 `--quiet` 参数，否则 `gcloud` 默认会弹出 `Do you want to continue (Y/n)?` 导致流水线挂起）。
-4. **实时状态回读与漂移检测（`data.http`）**：
-   - 自动从 Security Center Management API 读取 `securityCenterServices/event-threat-detection` 实时状态及项目级 `billingMetadata`，并将 `effective_enablement_state`、`billing_tier` 和 `enabled_module_count` 作为 Terraform Outputs 输出。
+4. **实时状态回读与层级资格核验（`data.http`）**：
+   - 自动从官方 Public GA 的 Security Center Management API v1 读取 `securityCenterServices/event-threat-detection` 实时状态，并将 `effective_enablement_state`、`tier_eligibility` 和 `enabled_module_count` 作为 Terraform Outputs 输出。
 
 ---
 
@@ -65,11 +65,14 @@ module "project_etd_service" {
 | 变量名 | 说明 | 类型 | 默认值 | 必填 |
 | :--- | :--- | :--- | :--- | :---: |
 | `parent` | 资源层级父路径，格式为 `projects/<PROJECT_ID>`、`folders/<FOLDER_ID>` 或 `organizations/<ORG_ID>`。 | `string` | n/a | 是 |
+| `service_name` | SCC 内置服务 ID（`event-threat-detection`、`security-health-analytics`、`vm-threat-detection`、`container-threat-detection`）。 | `string` | `"event-threat-detection"` | 否 |
 | `intended_enablement_state` | 目标启用状态（`ENABLED`、`DISABLED`、`INHERITED`）。 | `string` | `"ENABLED"` | 否 |
-| `modules` | 内置 ETD 模块名称到目标 `enablement_state` 及可选 `configuration` 的映射表。 | `map(object)` | `{}` | 否 |
+| `modules` | 内置 ETD 模块名称到目标 `enablement_state` 的映射表。 | `any` | `{}` | 否 |
 | `execution_mode` | 执行后端（`REST_API` 或 `GCLOUD_CLI`）。 | `string` | `"REST_API"` | 否 |
-| `validate_only` | 当为 `true` 时（仅限 `REST_API` 模式），附加 `&validateOnly=true` 进行 Dry-Run 校验。 | `bool` | `false` | 否 |
-| `reset_to_inherited_on_destroy` | 当为 `true` 时，在 `terraform destroy` 时将 `intendedEnablementState` 重置为 `INHERITED`。 | `bool` | `true` | 否 |
+| `validate_only` | 当为 `true` 时，通过 `validateOnly=true` / `--validate-only` 进行 Dry-Run 校验。 | `bool` | `false` | 否 |
+| `quota_project_id` | 可选的配额计费项目 ID（用于 `X-Goog-User-Project` 请求头）。 | `string` | `""` | 否 |
+| `enable_required_apis` | 当 `parent` 为 `projects/*` 时是否自动启用 `securitycenter.googleapis.com` 与 `securitycentermanagement.googleapis.com`。 | `bool` | `true` | 否 |
+| `enforce_effective_enablement_check` | 当 `effectiveEnablementState` 不为 `ENABLED` 时是否触发 Terraform `check` 告警。 | `bool` | `false` | 否 |
 
 ---
 
@@ -80,6 +83,8 @@ module "project_etd_service" {
 | `service_resource_name` | ETD `SecurityCenterService` 的完整资源名称。 |
 | `intended_enablement_state` | API 返回的实时 `intendedEnablementState`。 |
 | `effective_enablement_state` | API 返回的实时 `effectiveEnablementState`（`ENABLED` 或 `DISABLED`）。 |
-| `billing_tier` | 当 `parent` 为 `projects/*` 时返回的实时 SCC `billingTier`（`PREMIUM` 或 `STANDARD`），否则为 `N/A`。 |
+| `tier_eligibility` | 基于官方 Public GA 接口推断的层级资格状态（`PREMIUM_OR_ENTERPRISE`、`STANDARD_OR_UNONBOARDED` 或 `FOLDER_POLICY_SCOPE`）。 |
 | `enabled_module_count` | 当前处于启用状态的内置 ETD 检测器模块数量。 |
 | `update_time` | Security Center Management API 返回的最后更新时间戳。 |
+| `configured_modules_state` | 本模块所管理的特定内置检测器模块的实时生效状态。 |
+| `console_onboarding_url` | 当项目尚未生效为 `ENABLED` 时输出的一键控制台激活直达链接。 |

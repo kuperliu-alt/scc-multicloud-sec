@@ -1,22 +1,22 @@
 # SCC 多云安全与事件威胁检测 (ETD) 车队级自动化工具包 (`scc-multicloud-sec`)
 
-一个模块化、生产就绪的 **Google Cloud Security Command Center (SCC)** 与 **Event Threat Detection (ETD)** 跨项目、文件夹及组织级规模化自动化工具包与工程工作区，内置 Google Cloud 会话级凭据隔离与多智能体（Multi-Agent）研发治理规范。
+一个基于 **100% Public GA 公开 API** 构建的模块化、生产就绪 **Google Cloud Security Command Center (SCC)** 与 **Event Threat Detection (ETD)** 跨项目、文件夹及组织级规模化自动化工具包与工程工作区，内置 Google Cloud 会话级凭据隔离与多智能体（Multi-Agent）研发治理规范。
 
 ---
 
 ## 🌟 核心能力
 
 1. **SCC 与 ETD 车队级管理 CLI (`scripts/scc_etd_fleet_manager.py`)**：
-   - **车队级计费层级与 ETD 状态巡检 (`audit`)**：自动发现指定文件夹（Folder）下的所有活跃项目（或指定项目列表），调用公开的 `billingMetadata`、`securityCenterSettings` 与 `securityCenterServices/event-threat-detection` API，实时核查 `billingTier`（`PREMIUM` vs `STANDARD`）、首次激活时间、服务账号及已启用的内置检测器数量（152+ 内置检测模块）。
-   - **前置 API 与服务代理自动化预配 (`prepare`)**：批量启用 SCC 前置 API（`securitycentermanagement.googleapis.com`、`securitycenter.googleapis.com`、`cloudresourcemanager.googleapis.com`），预创建项目级服务身份（`service-<PROJECT_NUMBER>@security-center-api.iam.gserviceaccount.com`），并**仅针对尚未完成层级切换的项目**生成一键控制台激活直达链接（`https://console.cloud.google.com/security/command-center/onboarding?project=<PROJECT_ID>`）。
+   - **车队级层级资格与 ETD 状态巡检 (`audit`)**：自动发现指定文件夹（Folder）下的所有活跃项目（或指定项目列表），调用官方 Public GA 的 `securityCenterServices/event-threat-detection` 接口（`securitycentermanagement.googleapis.com/v1`），实时核查 `effectiveEnablementState`（`ENABLED` vs `DISABLED`）、层级资格状态（`PREMIUM_OR_ENTERPRISE` vs `STANDARD_OR_UNONBOARDED`）及已启用的内置检测器数量（152+ 内置检测模块）。
+   - **前置 API 批量自动化启用 (`prepare`)**：批量为目标项目或文件夹下所有活跃项目启用 SCC 前置 API（`securitycentermanagement.googleapis.com`、`securitycenter.googleapis.com`、`cloudresourcemanager.googleapis.com`）。
    - **内置 ETD 服务与检测器模块配置 (`configure-etd`)**：支持在 `organizations/*`、`folders/*` 或 `projects/*` 任意层级设置 `intendedEnablementState`（`ENABLED`、`DISABLED`、`INHERITED`）及单个内置检测器模块覆盖策略，并原生支持 `--validate-only` 无损预检。
 
 2. **内置 ETD 服务与模块 Terraform 模块 (`terraform/modules/scc-etd-service`)**：
-   - 填补 `hashicorp/google`（截至 `<= v8.5.0` 仅支持 ETD *自定义*模块）的功能空白，通过封装 **Public GA 的 Security Center Management API v1**（`securityCenterServices/event-threat-detection`）并结合 `data "http"` 实现实时状态回读与配置漂移检测。
+   - 填补 `hashicorp/google`（截至 `<= v8.5.0` 仅支持 ETD *自定义*模块）的功能空白，通过封装 **100% Public GA 的 Security Center Management API v1**（`securityCenterServices/event-threat-detection`）并结合 `data "http"` 实现实时状态回读与配置漂移检测。
    - 同时支持直接调用 `REST_API`（带 `updateMask=intendedEnablementState,modules` 的 `PATCH` 请求）与非交互式 `GCLOUD_CLI`（`gcloud scc manage services update event-threat-detection --quiet`）两种执行引擎。
 
 3. **实测技术验证报告与架构指南 (`docs/SCC_ETD_OPEN_QUESTIONS_CHN.md`)**：
-   - 详尽记录项目级 SCC Premium 层级激活的底层 API 根因分析（`PANTHEON` 内部可见性限制 vs 公开状态巡检接口）、Terraform 内置 ETD 模块自动化方案，以及无 Organization 级权限下基于 Folder/Project 的三种规模化落地范式。
+   - 详尽记录项目级 SCC Premium 层级激活的架构原因与公开状态巡检方案、Terraform 内置 ETD 模块自动化方案，以及无 Organization 级权限下基于 Folder/Project 的三种规模化落地范式。
 
 4. **Google Cloud 会话级凭据隔离与多智能体工程治理**：
    - 将 `gcloud` 配置与认证凭据严格隔离在工作区 `.gcloud/` 目录内（`CLOUDSDK_CONFIG`）。
@@ -67,16 +67,16 @@ scc-multicloud-sec/
 
 ## 🚀 快速启动指南
 
-### 1. 巡检文件夹（Folder）或项目群的 SCC 计费层级与 ETD 生效状态
+### 1. 巡检文件夹（Folder）或项目群的 SCC 层级资格与 ETD 生效状态
 ```bash
 # 巡检指定项目列表
 python3 scripts/scc_etd_fleet_manager.py audit --projects <PROJECT_ID_1>,<PROJECT_ID_2>
 
 # 自动发现并巡检指定 GCP 文件夹下的所有活跃项目
-python3 scripts/scc_etd_fleet_manager.py audit --folder <FOLDER_ID>
+python3 scripts/scc_etd_fleet_manager.py audit --folder <FOLDER_ID> --expand-folder-projects
 ```
 
-### 2. 项目群 SCC 激活前置准备（批量启用 API、预创建服务代理、输出未激活项目直达链接）
+### 2. 项目群 SCC 激活前置准备（批量启用前置 API）
 ```bash
 python3 scripts/scc_etd_fleet_manager.py prepare --folder <FOLDER_ID>
 ```
